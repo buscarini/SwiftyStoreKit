@@ -60,7 +60,7 @@ import Foundation
             self.refreshReceiptRequest.start()
         }
 
-        func requestDidFinish(request: SKRequest) {
+        func requestDidFinish(_ request: SKRequest) {
             /*if let resoreRequest = request as? SKReceiptRefreshRequest {
                 let receiptProperties = resoreRequest.receiptProperties ?? [:]
                 for (k, v) in receiptProperties {
@@ -69,7 +69,7 @@ import Foundation
             }*/
             callback(result: .Success)
         }
-        func request(request: SKRequest, didFailWithError error: NSError) {
+        func request(_ request: SKRequest, didFailWithError error: NSError) {
             // XXX could here check domain and error code to return typed exception
             callback(result: .Error(e: error))
         }

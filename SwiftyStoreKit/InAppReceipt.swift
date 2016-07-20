@@ -50,15 +50,15 @@ extension SwiftyStoreKit {
 }
 
 // Error when managing receipt
-public enum ReceiptError: ErrorType {
+public enum ReceiptError: ErrorProtocol {
     // No receipt data
     case NoReceiptData
     // No data receice
     case NoRemoteData
     // Error when encoding HTTP body into JSON
-    case RequestBodyEncodeError(error: ErrorType)
+    case RequestBodyEncodeError(error: ErrorProtocol)
     // Error when proceeding request
-    case NetworkError(error: ErrorType)
+    case NetworkError(error: ErrorProtocol)
     // Error when decoding response
     case JSONDecodeError(string: String?)
     // Receive invalid - bad status returned
@@ -154,12 +154,12 @@ internal class InAppReceipt {
         case Test = "https://sandbox.itunes.apple.com/verifyReceipt"
     }
 
-    static var URL: NSURL? {
-        return NSBundle.mainBundle().appStoreReceiptURL
+    static var URL: URL? {
+        return Bundle.main.appStoreReceiptURL
     }
 
-    static var data: NSData? {
-        if let receiptDataURL = URL, data = NSData(contentsOfURL: receiptDataURL) {
+    static var data: Data? {
+        if let receiptDataURL = URL, let data = try? Data(contentsOf: receiptDataURL as URL) {
             return data
         }
         return nil
@@ -167,7 +167,7 @@ internal class InAppReceipt {
 
     // The base64 encoded receipt data.
     static var base64EncodedString: String? {
-        return data?.base64EncodedStringWithOptions([])
+	    return data?.base64EncodedString()
     }
 
     // https://developer.apple.com/library/ios/releasenotes/General/ValidateAppStoreReceipt/Chapters/ValidateRemotely.html
@@ -181,7 +181,7 @@ internal class InAppReceipt {
     class func verify(
         receiptVerifyURL url: ReceiptVerifyURL = .Production,
         password autoRenewPassword: String? = nil,
-        session: NSURLSession = NSURLSession.sharedSession(),
+        session: URLSession = URLSession.shared,
         completion:(result: SwiftyStoreKit.VerifyReceiptResult) -> ()) {
 
             // If no receipt is present, validation fails.
@@ -192,8 +192,8 @@ internal class InAppReceipt {
 
             // Create request
             let storeURL = NSURL(string: url.rawValue)! // safe (until no more)
-            let storeRequest = NSMutableURLRequest(URL: storeURL)
-            storeRequest.HTTPMethod = "POST"
+            let storeRequest = NSMutableURLRequest(url: storeURL as URL)
+            storeRequest.httpMethod = "POST"
 
 
             let requestContents :NSMutableDictionary = [ "receipt-data" : base64EncodedString]
@@ -204,14 +204,14 @@ internal class InAppReceipt {
 
             // Encore request body
             do {
-                storeRequest.HTTPBody = try NSJSONSerialization.dataWithJSONObject(requestContents, options: [])
+                storeRequest.httpBody = try JSONSerialization.data(withJSONObject: requestContents, options: [])
             } catch let e {
                 completion(result: .Error(error: .RequestBodyEncodeError(error: e)))
                 return
             }
 
             // Remote task
-            let task = session.dataTaskWithRequest(storeRequest) { data, response, error -> Void in
+            let task = session.dataTask(with: storeRequest as URLRequest) { data, response, error -> Void in
 
                 // there is an error
                 if let networkError = error {
@@ -226,8 +226,8 @@ internal class InAppReceipt {
                 }
 
                 // cannot decode data
-                guard let receiptInfo = try? NSJSONSerialization.JSONObjectWithData(data!, options: .MutableLeaves) as? ReceiptInfo ?? [:] else {
-                    let jsonStr = String(data: safeData, encoding: NSUTF8StringEncoding)
+                guard let receiptInfo = try? JSONSerialization.jsonObject(with: data!, options: .mutableLeaves) as? ReceiptInfo ?? [:] else {
+                    let jsonStr = String(data: safeData, encoding: String.Encoding.utf8)
                     completion(result: .Error(error: .JSONDecodeError(string: jsonStr)))
                     return
                 }
@@ -273,7 +273,7 @@ internal class InAppReceipt {
      *  - return: either NotPurchased or Purchased
      */
     class func verifyPurchase(
-        productId productId: String,
+        productId: String,
         inReceipt receipt: ReceiptInfo
     ) -> SwiftyStoreKit.VerifyPurchaseResult {
       
@@ -293,10 +293,10 @@ internal class InAppReceipt {
      *  - return: either NotPurchased or Purchased / Expired with the expiry date found in the receipt
      */
     class func verifySubscription(
-        productId productId: String,
+        productId: String,
         inReceipt receipt: ReceiptInfo,
         validUntil date: NSDate = NSDate(),
-        validDuration duration: NSTimeInterval? = nil
+        validDuration duration: TimeInterval? = nil
     ) -> SwiftyStoreKit.VerifySubscriptionResult {
       
         // Verify that at least one receipt has the right product id
@@ -318,9 +318,9 @@ internal class InAppReceipt {
                 let expiryDateDouble = (doubleValue / 1000 + addedDuration)
                 return NSDate(timeIntervalSince1970: expiryDateDouble)
             }
-            .sort { (a, b) -> Bool in
+            .sorted { (a, b) -> Bool in
                 // Sort by descending date order
-                return a.compare(b) == .OrderedDescending
+                return a.compare(b as Date) == .orderedDescending
             }
       
         guard let firstExpiryDate = expiryDateValues.first else {
@@ -328,7 +328,7 @@ internal class InAppReceipt {
         }
       
         // Check if at least 1 receipt is valid
-        if firstExpiryDate.compare(date) == .OrderedDescending {
+        if firstExpiryDate.compare(date as Date) == .orderedDescending {
             
             // The subscription is valid
             return .Purchased(expiryDate: firstExpiryDate)
